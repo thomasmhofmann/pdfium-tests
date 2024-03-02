@@ -1,0 +1,15 @@
+[package]
+name = "pdfium-tests"
+version = "0.1.0"
+edition = "2018"
+publish = false
+description = "Some test regarding memory usage when using PDFIum."
+license = "Apache-2.0"
+keywords = ["pdf", "pdfium"]
+
+[dependencies]
+clap = { version = "4.5.1", features = ["derive"]}
+memory-stats = "1.1.0"
+re_memory = "0.14.1"
+human_bytes = "0.4.3"
+pdfium-render = "0.8.17"
