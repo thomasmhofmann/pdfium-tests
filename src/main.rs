@@ -1,3 +1,8 @@
+use std::fs;
+use std::io;
+use std::io::Read;
+use std::io::Write;
+
 use std::time::Duration;
 use std::{path::Path, time::Instant};
 
@@ -13,7 +18,7 @@ use comfy_table::*;
 #[derive(Parser)]
 #[command(name = "pdfium-tests")]
 #[command(version = "1.0")]
-#[command(about = "Concats several PDF documents into one", long_about = None)]
+#[command(about = "Concatenates several PDF documents into one", long_about = None)]
 struct Args {
     /// The number of the document to start with.
     #[arg(short = 's', long, default_value_t = 7000000)]
@@ -79,10 +84,18 @@ fn main() -> Result<(), PdfiumError> {
 
     println!("Creating {}", args.target);
     report_memory(&mut max_mem);
+
+    let target_path = Path::new(&args.target).parent().expect("Target should have a parent directory");
+    let _ = fs::create_dir_all(target_path);
     document.save_to_file(&args.target)?;
+
     report_memory(&mut max_mem);
-    print_summary(args, start.elapsed(), max_mem);
+    print_summary(args, start.elapsed(), document.pages().len(), max_mem);
     
+
+    writeln!(io::stdout(), "\nPress Enter to exit").unwrap();
+    let _ = io::stdin().read(&mut [0u8]).unwrap();
+
     Ok(())
 }
 
@@ -130,7 +143,7 @@ fn report_memory(max_mem: &mut usize) {
     }    
 }
 
-fn print_summary(args: Args, duration: Duration, max_mem: usize) {
+fn print_summary(args: Args, duration: Duration, page_count: u16, max_mem: usize) {
     use filesize::PathExt;
     println!("Time elapsed is: {:?}", duration);
 
@@ -140,12 +153,13 @@ fn print_summary(args: Args, duration: Duration, max_mem: usize) {
         .apply_modifier(UTF8_ROUND_CORNERS)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_width(100)
-        .set_header(vec!["Source", "Start", "Count", "Time Elapsed (ms)", "Max Memory", "Target File Size"])
+        .set_header(vec!["Source", "Start", "Count", "Time Elapsed (ms)", "Page Count", "Max Memory", "Target File Size"])
         .add_row(vec![
             Cell::new(args.source_directory),
             Cell::new(args.start),
             Cell::new(args.count),
             Cell::new(format!("{:?}", duration)),
+            Cell::new(page_count),
             Cell::new(human_bytes(max_mem as f64)),
             Cell::new(human_bytes(Path::new(&args.target).size_on_disk().unwrap() as f64)),
         ]);
