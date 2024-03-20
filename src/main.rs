@@ -10,14 +10,6 @@ use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::*;
 
-/*
-use re_memory::{AccountingAllocator, MemoryUse};
-
-#[global_allocator]
-static GLOBAL: AccountingAllocator<std::alloc::System> =
-    AccountingAllocator::new(std::alloc::System);
- */
-
 #[derive(Parser)]
 #[command(name = "pdfium-tests")]
 #[command(version = "1.0")]
@@ -45,7 +37,7 @@ struct Args {
 }
 
 fn main() -> Result<(), PdfiumError> {
-    let mut maxMem = 0;
+    let mut max_mem = 0;
     let args = Args::parse();
 
     let start = Instant::now();
@@ -55,7 +47,7 @@ fn main() -> Result<(), PdfiumError> {
     let font: PdfFontToken = document.fonts_mut().helvetica();
 
     println!("Merging {} documents", args.count);
-    report_memory(&mut maxMem);
+    report_memory(&mut max_mem);
 
 
     for i in args.start..args.start + args.count {
@@ -72,7 +64,7 @@ fn main() -> Result<(), PdfiumError> {
                     }
 
                     document.pages_mut().append(&doc)?;
-                    report_memory(&mut maxMem);
+                    report_memory(&mut max_mem);
                     Some(doc)
                 }
                 Err(e) => {
@@ -86,10 +78,10 @@ fn main() -> Result<(), PdfiumError> {
     }
 
     println!("Creating {}", args.target);
-    report_memory(&mut maxMem);
+    report_memory(&mut max_mem);
     document.save_to_file(&args.target)?;
-    report_memory(&mut maxMem);
-    print_summary(args, start.elapsed(), maxMem);
+    report_memory(&mut max_mem);
+    print_summary(args, start.elapsed(), max_mem);
     
     Ok(())
 }
@@ -126,28 +118,19 @@ fn watermark(
     Ok(())
 }
 
-fn report_memory(maxMem: &mut usize) {
+fn report_memory(max_mem: &mut usize) {
     if let Some(usage) = memory_stats() {
         println!();
         println!("Physical memory usage: {}", human_bytes(usage.physical_mem as f64));
-        //println!("Virtual memory usage: {}", human_bytes(usage.virtual_mem as f64));
-        if *maxMem < usage.physical_mem {
-            *maxMem = usage.physical_mem;
+        if *max_mem < usage.physical_mem {
+            *max_mem = usage.physical_mem;
         }
     } else {
         println!("Couldn't get the current memory usage :(");
-    }
-
-    /*
-    let usage = MemoryUse::capture();
-    match usage.resident {
-        Some(bytes) => println!("Resident memory: {}", human_bytes(bytes as f64)),
-        None => println!("Resident memory not available")
-    };
-    */
+    }    
 }
 
-fn print_summary(args: Args, duration: Duration, maxMem: usize) {
+fn print_summary(args: Args, duration: Duration, max_mem: usize) {
     use filesize::PathExt;
     println!("Time elapsed is: {:?}", duration);
 
@@ -163,14 +146,10 @@ fn print_summary(args: Args, duration: Duration, maxMem: usize) {
             Cell::new(args.start),
             Cell::new(args.count),
             Cell::new(format!("{:?}", duration)),
-            Cell::new(human_bytes(maxMem as f64)),
+            Cell::new(human_bytes(max_mem as f64)),
             Cell::new(human_bytes(Path::new(&args.target).size_on_disk().unwrap() as f64)),
         ]);
     
-
-    // Set the default alignment for the third column to right
-    let column = table.column_mut(2).expect("Our table has three columns");
-    column.set_cell_alignment(CellAlignment::Right);
     println!("{table}");
 
     println!("Target File: {}", args.target)
