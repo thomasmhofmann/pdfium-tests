@@ -1,9 +1,14 @@
+use std::time::Duration;
 use std::{path::Path, time::Instant};
 
 use clap::{command, Parser};
 use human_bytes::human_bytes;
 use memory_stats::memory_stats;
 use pdfium_render::prelude::*;
+
+use comfy_table::modifiers::UTF8_ROUND_CORNERS;
+use comfy_table::presets::UTF8_FULL;
+use comfy_table::*;
 
 /*
 use re_memory::{AccountingAllocator, MemoryUse};
@@ -26,6 +31,10 @@ struct Args {
     #[arg(short, long, default_value_t = 100)]
     count: u32,
 
+    /// Whether to add a watermark or not
+    #[arg(short, long, default_value = "false")]
+    watermark: bool,
+
     /// The directory where the PDF files to process are stored.
     #[arg(short = 'd', long, default_value = ".")]
     source_directory: String,
@@ -36,6 +45,7 @@ struct Args {
 }
 
 fn main() -> Result<(), PdfiumError> {
+    let mut maxMem = 0;
     let args = Args::parse();
 
     let start = Instant::now();
@@ -45,7 +55,8 @@ fn main() -> Result<(), PdfiumError> {
     let font: PdfFontToken = document.fonts_mut().helvetica();
 
     println!("Merging {} documents", args.count);
-    report_memory();
+    report_memory(&mut maxMem);
+
 
     for i in args.start..args.start + args.count {
         let file_path = format!("{}/{}.pdf", args.source_directory, i);
@@ -55,9 +66,13 @@ fn main() -> Result<(), PdfiumError> {
             let _document_to_add = match pdfium.load_pdf_from_file(&file_path, None) {
                 Ok(mut doc) => {
                     println!("Imported document {}", &file_path);
-                    watermark(font, &mut doc)?;
+
+                    if args.watermark {
+                        watermark(font, &mut doc)?;
+                    }
+
                     document.pages_mut().append(&doc)?;
-                    report_memory();
+                    report_memory(&mut maxMem);
                     Some(doc)
                 }
                 Err(e) => {
@@ -71,12 +86,11 @@ fn main() -> Result<(), PdfiumError> {
     }
 
     println!("Creating {}", args.target);
-    report_memory();
+    report_memory(&mut maxMem);
     document.save_to_file(&args.target)?;
-    report_memory();
-
-    let duration = start.elapsed();
-    println!("Time elapsed is: {:?}", duration);
+    report_memory(&mut maxMem);
+    print_summary(args, start.elapsed(), maxMem);
+    
     Ok(())
 }
 
@@ -112,11 +126,14 @@ fn watermark(
     Ok(())
 }
 
-fn report_memory() {
+fn report_memory(maxMem: &mut usize) {
     if let Some(usage) = memory_stats() {
         println!();
         println!("Physical memory usage: {}", human_bytes(usage.physical_mem as f64));
         //println!("Virtual memory usage: {}", human_bytes(usage.virtual_mem as f64));
+        if *maxMem < usage.physical_mem {
+            *maxMem = usage.physical_mem;
+        }
     } else {
         println!("Couldn't get the current memory usage :(");
     }
@@ -128,4 +145,33 @@ fn report_memory() {
         None => println!("Resident memory not available")
     };
     */
+}
+
+fn print_summary(args: Args, duration: Duration, maxMem: usize) {
+    use filesize::PathExt;
+    println!("Time elapsed is: {:?}", duration);
+
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .apply_modifier(UTF8_ROUND_CORNERS)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_width(100)
+        .set_header(vec!["Source", "Start", "Count", "Time Elapsed (ms)", "Max Memory", "Target File Size"])
+        .add_row(vec![
+            Cell::new(args.source_directory),
+            Cell::new(args.start),
+            Cell::new(args.count),
+            Cell::new(format!("{:?}", duration)),
+            Cell::new(human_bytes(maxMem as f64)),
+            Cell::new(human_bytes(Path::new(&args.target).size_on_disk().unwrap() as f64)),
+        ]);
+    
+
+    // Set the default alignment for the third column to right
+    let column = table.column_mut(2).expect("Our table has three columns");
+    column.set_cell_alignment(CellAlignment::Right);
+    println!("{table}");
+
+    println!("Target File: {}", args.target)
 }
